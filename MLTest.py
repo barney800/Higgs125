@@ -8,14 +8,13 @@ from scipy import sparse
 from sklearn import manifold, datasets
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
-def ScanManifold(X_train, n_pts, ML_method='LLE', ML_kwargs={}):
+def ScanManifold(X_train, n_pts, ML_method='LLE', ML_kwargs={}, scan_method='uniform'):
 
     # Display training data info
     n_pts_train, d_high = X_train.shape
     d_low = d_high-1
-    print "Training data: {0} points in {1}-dimensional space".format(n_pts_train, d_high)
+    print "Training data: {0} points in {1}-dimensional parameter space".format(n_pts_train, d_high)
 
     # Dimensionally reduce training data
     print "Trying manifold learning method: {0}".format(ML_method)
@@ -30,15 +29,25 @@ def ScanManifold(X_train, n_pts, ML_method='LLE', ML_kwargs={}):
     elif ML_method == 'TSNE':
         Y_train = manifold.TSNE(n_components=d_low, **ML_kwargs).fit_transform(X_train)
     else:
-        print "'{0}' is not a supported method. Defaulting to LLE_standard".format(ML_method)
+        print "'{0}' is not a supported method, defaulting to LLE_standard".format(ML_method)
         Y_train = manifold.LocallyLinearEmbedding(n_components=d_low).fit_transform(X_train)
 
     # Scan over manifold
-    n_pts_d = [ int(np.ceil(n_pts**(1.0/d_low))) for i in range(d_low) ]
+    print "Attempting {0} scan over {1}-dimensional manifold".format(scan_method, d_low)
     Y_max = np.array([ np.amax(Y_train[:,i]) for i in range(d_low) ])
     Y_min = np.array([ np.amin(Y_train[:,i]) for i in range(d_low) ])
-    Y_range = np.array([ [Y_min[i]+n*(Y_max[i]-Y_min[i])/(n_pts_d[0]-1) for n in range(n_pts_d[i])] for i in range(d_low) ])
-    Y = np.array([ Y_pt for Y_pt in product(*Y_range) ])
+    if scan_method == 'uniform':
+        n_pts_d = [ int(np.ceil(n_pts**(1.0/d_low))) for i in range(d_low) ]
+        n_pts = np.prod(n_pts_d)
+        Y_range = np.array([ [Y_min[i]+n*(Y_max[i]-Y_min[i])/(n_pts_d[0]-1) for n in range(n_pts_d[i])] for i in range(d_low) ])
+        Y = np.array([ Y_pt for Y_pt in product(*Y_range) ])
+    elif scan_method == 'random':
+        Y = np.array([ [ Y_min[i]+np.random.random()*(Y_max[i]-Y_min[i]) for i in range(d_low) ] for n in range(n_pts) ])
+    else:
+        print "'{0}' is not a supported method, defaulting to uniform scan".format(scan_method)
+        n_pts_d = [ int(np.ceil(n_pts**(1.0/d_low))) for i in range(d_low) ]
+        Y_range = np.array([ [Y_min[i]+n*(Y_max[i]-Y_min[i])/(n_pts_d[0]-1) for n in range(n_pts_d[i])] for i in range(d_low) ])
+        Y = np.array([ Y_pt for Y_pt in product(*Y_range) ])
 
     # Find nearest neighbours in training data for points in scan
     n_nbrs = d_low+1
@@ -68,23 +77,24 @@ def ScanManifold(X_train, n_pts, ML_method='LLE', ML_kwargs={}):
     W = sparse.coo_matrix((W_data, (W_rows, W_cols)), shape=(n_pts, n_pts_train))
 
     # Uplift scan to full parameter space
+    print "Returning {0} points in {1}-dimensional parameter space".format(n_pts, d_high)
     return W.dot(X_train)
 
 # Manifold learning method for training data
 # Options are LLE, Isomap, SpectralEmbedding, TSNE
 # Details http://scikit-learn.org/stable/modules/classes.html#module-sklearn.manifold
-ML_method = 'LLE'
+ML_method = 'Isomap'
 # Manifold learning method args
-ML_kwargs = {'method' : 'standard', 'n_neighbors' : 20}
-#ML_kwargs = {'n_neighbors' : 20}
+#ML_kwargs = {'method' : 'standard', 'n_neighbors' : 20}
+ML_kwargs = {'n_neighbors' : 20}
 # Number of scan points to generate
-n_pts = 100
+n_pts = 1000
 
 # Define training data
-n_pts_train = 100
+n_pts_train = 300
 noise = 0
-X_train = np.array([ [x_val+noise*np.random.normal(), x_val**2+noise*np.random.normal()] for x_val in 1-2*np.random.random(n_pts_train) ])
-#X_train, color = datasets.samples_generator.make_s_curve(n_pts_train, random_state=0)
+#X_train = np.array([ [x_val+noise*np.random.normal(), x_val**2+noise*np.random.normal()] for x_val in 1-2*np.random.random(n_pts_train) ])
+X_train, color = datasets.samples_generator.make_s_curve(n_pts_train, random_state=0)
 n_pts_train, d_high = X_train.shape
 d_low = d_high-1
 
